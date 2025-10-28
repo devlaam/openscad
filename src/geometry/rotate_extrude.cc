@@ -91,10 +91,10 @@ std::unique_ptr<Geometry> rotatePolygon(const RotateExtrudeNode& node, const Pol
   }
 
   if (max_x > 0 && min_x < 0) {
-    LOG(
-      message_group::Error,
-      "all points for rotate_extrude() must have the same X coordinate sign (range is %1$.2f -> %2$.2f)",
-      min_x, max_x);
+    LOG(message_group::Error,
+        "Children of rotate_extrude() may not lie across the Y axis (Range of X coords for all children "
+        "[%1$.2f : %2$.2f])",
+        min_x, max_x);
     return nullptr;
   }
 
@@ -105,7 +105,7 @@ std::unique_ptr<Geometry> rotatePolygon(const RotateExtrudeNode& node, const Pol
     1));
   const bool closed = node.angle == 360;
   // # of rings of vertices
-  const int num_rings = num_sections + (closed ? 0 : 1);
+  const size_t num_rings = num_sections + (closed ? 0 : 1);
 
   const bool flip_faces = (min_x >= 0 && node.angle > 0) || (min_x < 0 && node.angle < 0);
 
@@ -137,7 +137,7 @@ std::unique_ptr<Geometry> rotatePolygon(const RotateExtrudeNode& node, const Pol
     int curr_outline = 0;
     for (const auto& outline : poly.outlines()) {
       assert(outline.vertices.size() > 2);
-      for (int i = 1; i <= outline.vertices.size(); ++i) {
+      for (size_t i = 1; i <= outline.vertices.size(); ++i) {
         const int curr_idx = curr_outline + (i % outline.vertices.size());
         const int prev_idx = curr_outline + i - 1;
         if (flip_faces) {

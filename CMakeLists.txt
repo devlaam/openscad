@@ -8,6 +8,7 @@
 #   -DEXPERIMENTAL=<ON|OFF>
 #
 
+
 cmake_minimum_required(VERSION 3.13)
 
 # Let AUTOMOC and AUTOUIC process GENERATED files.
@@ -56,18 +57,25 @@ option(OFFLINE_DOCS "Download Documentation for offline usage" OFF)
 option(USE_MIMALLOC "Use mimalloc as malloc replacement." ON)
 option(USE_BUILTIN_OPENCSG "Use OpenCSG from submodule." OFF)
 option(USE_CCACHE "Use ccache to speed up compilation." ON)
-option(ENABLE_CAIRO "Enable support for cairo vector graphics library." ON)
-option(ENABLE_SPNAV "Enable support for libspnav input driver." ON)
-option(ENABLE_HIDAPI "Enable support for HIDAPI input driver." ON)
+set(ENABLE_CAIRO "AUTO" CACHE STRING "Enable support for cairo vector graphics library")
+set_property(CACHE ENABLE_CAIRO PROPERTY STRINGS "AUTO" "ON" "OFF")
+
+set(ENABLE_SPNAV "AUTO" CACHE STRING "Enable support for libspnav input driver")
+set_property(CACHE ENABLE_SPNAV PROPERTY STRINGS "AUTO" "ON" "OFF")
+
+set(ENABLE_HIDAPI "AUTO" CACHE STRING "Enable support for HIDAPI input driver")
+set_property(CACHE ENABLE_HIDAPI PROPERTY STRINGS "AUTO" "ON" "OFF")
 option(ENABLE_CGAL "Enable CGAL." ON)
 option(ENABLE_MANIFOLD "Enable Manifold." ON)
+option(CMAKE_REQUIRE_FIND_PACKAGE_Lib3MF "Require Lib3MF." ON)
 option(ALLOW_BUNDLED_HIDAPI "Allow usage of bundled HIDAPI library (Windows only)." OFF)
 option(ENABLE_PYTHON "Enable experimental Python Interpreter" OFF)
 option(BUILD_SHARED_LIBS "Build shared library" OFF)
 include(CMakeDependentOption)
 cmake_dependent_option(APPLE_UNIX "Build OpenSCAD in Unix mode in MacOS X instead of an Apple Bundle" OFF "APPLE" OFF)
 cmake_dependent_option(ENABLE_QTDBUS "Enable DBus input driver for Qt." ON "NOT HEADLESS" OFF)
-cmake_dependent_option(ENABLE_GAMEPAD "Enable Qt5Gamepad input driver." ON "NOT HEADLESS;NOT USE_QT6" OFF)
+set(ENABLE_GAMEPAD "AUTO" CACHE STRING "Enable Qt5Gamepad input driver")
+set_property(CACHE ENABLE_GAMEPAD PROPERTY STRINGS "AUTO" "ON" "OFF")
 set(WASM_BUILD_TYPE "web" CACHE STRING 
   "WebAssembly build type. Support web (builds an OpenSCAD module) or node (standalone .js executable)")
 
@@ -114,11 +122,64 @@ endif(CLANG_TIDY)
 
 add_executable(OpenSCAD)
 
+if (MINGW)
+  # Configure Debug flags (MinGW) to keep rich symbols and avoid PE/COFF
+  # RIP-relative relocation overflows in large template-heavy builds.
+  if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(OpenSCAD PRIVATE
+      $<$<CONFIG:Debug>:
+        -O0;                      # No optimisation → preserves locals
+        -g2;                      # Full debug info (types/locals)
+        -gsplit-dwarf;            # Put most DWARF in .dwo side files
+        -fno-omit-frame-pointer;  # Better backtraces
+        -fdebug-types-section;    # GCC-only: deduplicate type info
+        -Wa,-mbig-obj;            # COFF bigobj (many sections) on MinGW
+        -ffunction-sections;      # One function per section (enables GC)
+        -fdata-sections;          # One data per section (enables GC)
+      >
+    )
+    target_link_options(OpenSCAD PRIVATE
+      $<$<CONFIG:Debug>:
+        -Wl,--gc-sections;        # Linker: drop unused sections
+      >
+    )
+  elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    include(CheckCXXCompilerFlag)
+    check_cxx_compiler_flag("-gz=zlib" HAS_GZ_ZLIB)
+
+    target_compile_options(OpenSCAD PRIVATE
+      $<$<CONFIG:Debug>:
+        -O0;                      # No optimisation → preserves locals
+        -g2;                      # Full debug info (types/locals)
+        -fstandalone-debug;       # Emit complete type info for headers/templates
+        -fno-omit-frame-pointer;  # Better backtraces
+        -gsplit-dwarf;            # Put most DWARF in .dwo side files
+        -Wa,-mbig-obj;            # COFF bigobj (many sections) on MinGW
+        $<$<BOOL:${HAS_GZ_ZLIB}>:
+          -gz=zlib>;              # Compress debug sections (zlib)
+        -ffunction-sections;      # One function per section (enables GC)
+        -fdata-sections;          # One data per section (enables GC)
+      >
+    )
+    target_link_options(OpenSCAD PRIVATE
+      $<$<CONFIG:Debug>:
+        -Wl,--gc-sections;        # Linker: drop unused sections
+        -Wl,--icf=all;            # ICF: fold identical code/data (effective with lld)
+        -fuse-ld=lld;             # Use LLVM lld (robust with huge C++/COFF debug)
+      >
+    )
+  endif()
+endif()
+
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/submodules/sanitizers-cmake/cmake" ${CMAKE_MODULE_PATH})
 find_package(Sanitizers)
 
 # Strict c++17, e.g. no GNU extensions
-set_property(TARGET OpenSCAD PROPERTY CXX_STANDARD 17)
+if (MSVC) # For MSVC, errors show up when using c++ 17 for build.
+  set_property(TARGET OpenSCAD PROPERTY CXX_STANDARD 20)
+else()
+  set_property(TARGET OpenSCAD PROPERTY CXX_STANDARD 17)
+endif()
 set_property(TARGET OpenSCAD PROPERTY CXX_EXTENSIONS OFF)
 set_property(TARGET OpenSCAD PROPERTY CXX_STANDARD_REQUIRED ON)
 # Output compilation database (compile_commands.json), so we can e.g. run clang-tidy or other tools separately
@@ -330,8 +391,10 @@ if (MSVC)
   # Flex lexer options
   set(WINCOMPAT "--wincompat --nounistd")
   target_compile_definitions(OpenSCAD PRIVATE _USE_MATH_DEFINES)
+  target_compile_definitions(OpenSCAD PRIVATE NOMINMAX)
 
-  find_package(Eigen3 CONFIG REQUIRED)
+  # Our code is compatible with both V3 and V5, so for now, we accept any version.
+  find_package(Eigen3 REQUIRED QUIET)
   target_link_libraries(OpenSCAD PRIVATE Eigen3::Eigen)
   message(STATUS "Eigen: ${Eigen3_VERSION}")
 
@@ -347,17 +410,16 @@ if (MSVC)
   target_include_directories(OpenSCAD SYSTEM PRIVATE ${HARFBUZZ_INCLUDE_DIRS}/harfbuzz)
   target_link_libraries(OpenSCAD PRIVATE harfbuzz::harfbuzz)
 
-  find_package(unofficial-fontconfig CONFIG REQUIRED)
-  target_link_libraries(OpenSCAD PRIVATE unofficial::fontconfig::fontconfig)
+  find_package(Fontconfig)
+  target_link_libraries(OpenSCAD PRIVATE Fontconfig::Fontconfig)
 
-  find_package(unofficial-glib CONFIG REQUIRED)
-  target_include_directories(OpenSCAD SYSTEM PRIVATE ${GLIB2_INCLUDE_DIRS})
-  target_link_libraries(OpenSCAD PRIVATE unofficial::glib::gio unofficial::glib::glib unofficial::glib::gmodule unofficial::glib::gobject)
+  pkg_check_modules(GLIB2 REQUIRED IMPORTED_TARGET glib-2.0)
+  target_link_libraries(OpenSCAD PRIVATE PkgConfig::GLIB2)
 
   find_package(double-conversion CONFIG REQUIRED)
   target_link_libraries(OpenSCAD PRIVATE double-conversion::double-conversion)
 
-  find_library(GETTEXT_LIBRARY libintl)
+  find_library(GETTEXT_LIBRARY intl)
   target_link_libraries(OpenSCAD PRIVATE ${GETTEXT_LIBRARY})
 
   # call before setting local CMAKE_MODULE_PATH so we use VCPKG version of FindGLEW
@@ -379,12 +441,12 @@ else()
     endif()
   endif()
 
-  find_package(Eigen3 REQUIRED)
-  target_include_directories(OpenSCAD SYSTEM PRIVATE ${EIGEN3_INCLUDE_DIR})
-  target_compile_definitions(OpenSCAD PRIVATE EIGEN_DONT_ALIGN)
+  # Our code is compatible with both V3 and V5, so for now, we accept any version.
+  find_package(Eigen3 REQUIRED QUIET)
+  target_link_libraries(OpenSCAD PRIVATE Eigen3::Eigen)
   message(STATUS "Eigen: ${Eigen3_VERSION}")
 
-  find_package(Boost 1.70 REQUIRED COMPONENTS regex program_options)
+  find_package(Boost 1.70 REQUIRED QUIET COMPONENTS regex program_options)
   message(STATUS "Boost: ${Boost_VERSION}")
   target_include_directories(OpenSCAD SYSTEM PRIVATE ${Boost_INCLUDE_DIRS})
   target_link_libraries(OpenSCAD PRIVATE ${Boost_LIBRARIES})
@@ -478,7 +540,8 @@ if(ENABLE_PYTHON)
   add_custom_target(OpenSCADPython ALL COMMAND ${CMAKE_COMMAND} -E create_symlink openscad${SUFFIX_WITH_DASH} "openscad-python")
 endif()
 
-if(ENABLE_HIDAPI)
+if(ENABLE_HIDAPI STREQUAL "AUTO")
+  # AUTO: try to find, fallback gracefully if not found
   find_package(HidAPI 0.10 QUIET)
   if(HIDAPI_FOUND)
     set(INPUT_DRIVER_HIDAPI_SOURCES src/gui/input/HidApiInputDriver.cc)
@@ -495,13 +558,23 @@ if(ENABLE_HIDAPI)
     target_link_libraries(OpenSCAD PRIVATE setupapi hid)
     message(STATUS "HidAPI: ${HIDAPI_VERSION_STRING} (bundled)")
   else()
-    message(STATUS "HIDAPI: disabled")
+    message(STATUS "HIDAPI: disabled (not found)")
   endif()
+elseif(ENABLE_HIDAPI)
+  # Explicit ON: fail if not found
+  find_package(HidAPI 0.10 REQUIRED)
+  set(INPUT_DRIVER_HIDAPI_SOURCES src/gui/input/HidApiInputDriver.cc)
+  target_include_directories(OpenSCAD SYSTEM PRIVATE ${HIDAPI_INCLUDE_DIR})
+  target_link_libraries(OpenSCAD PRIVATE ${HIDAPI_LIBRARY})
+  target_compile_definitions(OpenSCAD PRIVATE ENABLE_HIDAPI)
+  message(STATUS "HidAPI: ${HIDAPI_VERSION_STRING}")
 else()
+  # OFF: explicitly disabled
   message(STATUS "HIDAPI: disabled per user request")
 endif()
 
-if(ENABLE_SPNAV)
+if(ENABLE_SPNAV STREQUAL "AUTO")
+  # AUTO: try to find, fallback gracefully if not found
   find_package(SpNav QUIET)
   if(SPNAV_FOUND)
     message(STATUS "SpNav: found")
@@ -510,21 +583,51 @@ if(ENABLE_SPNAV)
     target_link_libraries(OpenSCAD PRIVATE ${SPNAV_LIBRARY})
     target_compile_definitions(OpenSCAD PRIVATE ENABLE_SPNAV)
   else()
-    message(STATUS "SpNav: disabled")
+    message(STATUS "SpNav: disabled (not found)")
   endif()
+elseif(ENABLE_SPNAV)
+  # Explicit ON: fail if not found
+  find_package(SpNav REQUIRED)
+  message(STATUS "SpNav: found")
+  set(INPUT_DRIVER_SPNAV_SOURCES src/gui/input/SpaceNavInputDriver.cc)
+  target_include_directories(OpenSCAD SYSTEM PRIVATE ${SPNAV_INCLUDE_DIR})
+  target_link_libraries(OpenSCAD PRIVATE ${SPNAV_LIBRARY})
+  target_compile_definitions(OpenSCAD PRIVATE ENABLE_SPNAV)
+else()
+  # OFF: explicitly disabled
+  message(STATUS "SpNav: disabled per user request")
 endif()
 
-if(ENABLE_CAIRO)
-  find_package(Cairo 1.14 QUIET)
-  if (CAIRO_VERSION)
+if(ENABLE_CAIRO STREQUAL "AUTO")
+  # AUTO: try to find, fallback gracefully if not found
+  if (MSVC)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(CAIRO REQUIRED cairo)
+  else()
+    find_package(Cairo 1.14 QUIET)
+  endif()
+  if(CAIRO_VERSION OR CAIRO_FOUND)
     message(STATUS "Cairo: ${CAIRO_VERSION}")
     target_include_directories(OpenSCAD SYSTEM PRIVATE ${CAIRO_INCLUDE_DIRS})
     target_link_libraries(OpenSCAD PRIVATE ${CAIRO_LIBRARIES})
     target_compile_definitions(OpenSCAD PRIVATE ENABLE_CAIRO)
   else()
-    message(STATUS "Cairo: disabled")
+    message(STATUS "Cairo: disabled (not found)")
   endif()
+elseif(ENABLE_CAIRO)
+  # Explicit ON: fail if not found
+  if (MSVC)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(CAIRO REQUIRED cairo)
+  else()
+    find_package(Cairo 1.14 REQUIRED)
+  endif()
+  message(STATUS "Cairo: ${CAIRO_VERSION}")
+  target_include_directories(OpenSCAD SYSTEM PRIVATE ${CAIRO_INCLUDE_DIRS})
+  target_link_libraries(OpenSCAD PRIVATE ${CAIRO_LIBRARIES})
+  target_compile_definitions(OpenSCAD PRIVATE ENABLE_CAIRO)
 else()
+  # OFF: explicitly disabled
   message(STATUS "Cairo: disabled per user request")
 endif()
 
@@ -534,21 +637,19 @@ message(STATUS "Flex: ${FLEX_VERSION}")
 find_package(BISON REQUIRED QUIET)
 message(STATUS "Bison: ${BISON_VERSION}")
 
-if(NOT MSVC)
-  find_package(Lib3MF)
-  if (Lib3MF_FOUND)
-    message(STATUS "lib3mf: ${Lib3MF_VERSION}")
-    target_link_libraries(OpenSCAD PRIVATE Lib3MF::Lib3MF)
-    target_compile_definitions(OpenSCAD PRIVATE ENABLE_LIB3MF)
-    if (Lib3MF_VERSION VERSION_GREATER_EQUAL 2)
-      set(LIB3MF_SOURCES src/io/export_3mf_v2.cc src/io/import_3mf_v2.cc)
-    else()
-      set(LIB3MF_SOURCES src/io/export_3mf_v1.cc src/io/import_3mf_v1.cc)
-    endif()
+find_package(Lib3MF)
+if (Lib3MF_FOUND)
+  message(STATUS "lib3mf: ${Lib3MF_VERSION}")
+  target_link_libraries(OpenSCAD PRIVATE Lib3MF::Lib3MF)
+  target_compile_definitions(OpenSCAD PRIVATE ENABLE_LIB3MF)
+  if (Lib3MF_VERSION VERSION_GREATER_EQUAL 2)
+    set(LIB3MF_SOURCES src/io/export_3mf_v2.cc src/io/import_3mf_v2.cc)
   else()
-    set(LIB3MF_SOURCES src/io/export_3mf_dummy.cc src/io/import_3mf_dummy.cc)
-    message(STATUS "lib3mf: disabled")
+    set(LIB3MF_SOURCES src/io/export_3mf_v1.cc src/io/import_3mf_v1.cc)
   endif()
+else()
+  set(LIB3MF_SOURCES src/io/export_3mf_dummy.cc src/io/import_3mf_dummy.cc)
+  message(STATUS "lib3mf: disabled (not found)")
 endif()
 
 # Automatically add the current source and build directories to the include path.
@@ -611,7 +712,12 @@ if(NOT HEADLESS)
   endif()
 
   if (USE_QT6)
-    find_package(Qt6 COMPONENTS Core Core5Compat Widgets Multimedia OpenGL OpenGLWidgets Concurrent Network Svg ${QT_TEST_IF_ANY} REQUIRED QUIET)
+  # Validate Qt6 compatibility
+  if(ENABLE_GAMEPAD STREQUAL "ON")
+    message(FATAL_ERROR "Qt5Gamepad is not available when using Qt6. Set ENABLE_GAMEPAD to OFF or AUTO.")
+  endif()
+
+  find_package(Qt6 COMPONENTS Core Core5Compat Widgets Multimedia OpenGL OpenGLWidgets Concurrent Network Svg ${QT_TEST_IF_ANY} REQUIRED QUIET)
     message(STATUS "Qt6: ${Qt6_VERSION}")
 
     if (Qt6_POSITION_INDEPENDENT_CODE)
@@ -665,17 +771,25 @@ if(NOT HEADLESS)
       message(STATUS "DBus input driver disabled per user request.")
     endif()
 
-    if(ENABLE_GAMEPAD)
+    if(ENABLE_GAMEPAD STREQUAL "AUTO")
+      # AUTO: try to find, fallback gracefully if not found
       find_package(Qt5Gamepad QUIET)
       if (Qt5Gamepad_FOUND)
         message(STATUS "Qt5Gamepad input driver enabled")
         set(GUI_SOURCES ${GUI_SOURCES} src/gui/input/QGamepadInputDriver.cc)
         target_compile_definitions(OpenSCAD PRIVATE ENABLE_QGAMEPAD)
       else()
-        message(STATUS "Qt5Gamepad input driver disabled as the Qt5Gamepad module could not be found.")
+        message(STATUS "Qt5Gamepad input driver disabled (not found)")
       endif()
+    elseif(ENABLE_GAMEPAD)
+      # Explicit ON: fail if not found
+      find_package(Qt5Gamepad REQUIRED)
+      message(STATUS "Qt5Gamepad input driver enabled")
+      set(GUI_SOURCES ${GUI_SOURCES} src/gui/input/QGamepadInputDriver.cc)
+      target_compile_definitions(OpenSCAD PRIVATE ENABLE_QGAMEPAD)
     else()
-      message(STATUS "Qt5Gamepad input driver disabled per user request.")
+      # OFF: explicitly disabled
+      message(STATUS "Qt5Gamepad input driver disabled per user request")
     endif()
   endif()
 endif()
@@ -1009,10 +1123,10 @@ if(ENABLE_MANIFOLD)
     else()
       add_subdirectory(submodules/manifold EXCLUDE_FROM_ALL)
     endif()
-    message(STATUS "mainfold submodule: ${manifold_VERSION}")
+    message(STATUS "manifold submodule: ${MANIFOLD_VERSION}")
   else()
     find_package(manifold REQUIRED QUIET)
-    message(STATUS "mainfold: ${manifold_VERSION}")
+    message(STATUS "manifold: ${manifold_VERSION}")
   endif()
   target_link_libraries(OpenSCAD PRIVATE manifold::manifold)
   add_sanitizers(manifold)
@@ -1358,13 +1472,16 @@ if(APPLE AND NOT APPLE_UNIX)
   file(COPY ${CMAKE_SOURCE_DIR}/color-schemes DESTINATION ${BUNDLE_RESOURCES_DIR})
   file(COPY ${CMAKE_SOURCE_DIR}/examples DESTINATION ${BUNDLE_RESOURCES_DIR})
   file(COPY ${CMAKE_SOURCE_DIR}/fonts DESTINATION ${BUNDLE_RESOURCES_DIR})
-  file(COPY ${CMAKE_SOURCE_DIR}/libraries DESTINATION ${BUNDLE_RESOURCES_DIR})
+  file(COPY ${CMAKE_SOURCE_DIR}/libraries DESTINATION ${BUNDLE_RESOURCES_DIR} PATTERN ".git*" EXCLUDE)
   file(COPY ${CMAKE_SOURCE_DIR}/locale DESTINATION ${BUNDLE_RESOURCES_DIR})
   file(COPY ${CMAKE_SOURCE_DIR}/shaders DESTINATION ${BUNDLE_RESOURCES_DIR})
   file(COPY ${CMAKE_SOURCE_DIR}/templates DESTINATION ${BUNDLE_RESOURCES_DIR})
 
   if(ENABLE_GUI_TESTS)
-    file(COPY ${CMAKE_SOURCE_DIR}/tests/data DESTINATION ${BUNDLE_RESOURCES_DIR}/tests)
+    file(COPY 
+         ${CMAKE_SOURCE_DIR}/tests/data/basic-ux
+         ${CMAKE_SOURCE_DIR}/tests/data/modulecache-tests
+         DESTINATION ${BUNDLE_RESOURCES_DIR}/tests)
   endif()
 
 elseif(MINGW)

@@ -86,8 +86,8 @@ public:
   QTimer *waitAfterReloadTimer;
   RenderStatistic renderStatistic;
 
-  SourceFile *rootFile;                            // Result of parsing
-  SourceFile *parsedFile;                          // Last parse for include list
+  std::shared_ptr<SourceFile> rootFile;            // Result of parsing
+  std::shared_ptr<SourceFile> parsedFile;          // Last parse for include list
   std::shared_ptr<AbstractNode> absoluteRootNode;  // Result of tree evaluation
   std::shared_ptr<AbstractNode> rootNode;          // Root if the root modifier (!) is used
 #ifdef ENABLE_PYTHON
@@ -181,7 +181,7 @@ public:
 
   // Parse the document contained in the editor, update the editors's parameters and returns a SourceFile
   // object if parsing suceeded. Nullptr otherwise.
-  SourceFile *parseDocument(EditorInterface *editor);
+  std::shared_ptr<SourceFile> parseDocument(EditorInterface *editor);
 
   void parseTopLevelDocument();
   void exceptionCleanup();
@@ -219,6 +219,8 @@ private:
   void activateDock(Dock *);
   Dock *findVisibleDockToActivate(int offset) const;
   Dock *getNextDockFromSender(QObject *sender);
+  void addExportActions(QToolBar *toolbar, QAction *action) const;
+  QAction *formatIdentifierToAction(const std::string& identifier) const;
 
   LibraryInfoDialog *libraryInfoDialog{nullptr};
   FontListDialog *fontListDialog{nullptr};
@@ -273,6 +275,7 @@ private slots:
   // Handle the Next/Prev shortcut, currently switch to the targetted dock
   // and adds the rubberband, the rubbreband is removed on shortcut key release.
   void onWindowShortcutNextPrevActivated();
+  void onWindowShortcutExport3DActivated();
 
   void onEditorDockVisibilityChanged(bool isVisible);
   void onConsoleDockVisibilityChanged(bool isVisible);
@@ -317,8 +320,7 @@ private slots:
   void actionRender();
   void actionRenderDone(const std::shared_ptr<const Geometry>&);
   void cgalRender();
-  void actionMeasureDistance();
-  void actionMeasureAngle();
+  void handleMeasurementClicked(QAction *clickedAction);
   void actionCheckValidity();
   void actionDisplayAST();
   void actionDisplayCSGTree();
@@ -432,6 +434,10 @@ private:
   QMenu *navigationMenu{nullptr};
   QSoundEffect *renderCompleteSoundEffect;
   std::vector<std::unique_ptr<QTemporaryFile>> allTempFiles;
+
+  void resetMeasurementsState(bool enable, const QString& tooltipMessage);
+  QActionGroup *measurementGroup;
+  QAction *activeMeasurement = nullptr;
 
 signals:
   void highlightError(int);

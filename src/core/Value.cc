@@ -43,6 +43,7 @@
 
 #include "core/EvaluationSession.h"
 #include "io/fileutils.h"
+#include "utils/exceptions.h"
 #include "utils/printutils.h"
 #include "utils/StackCheck.h"
 #include "utils/boost-utils.h"
@@ -448,7 +449,7 @@ public:
     try {
       (tostream_visitor(stream))(v);
     } catch (EvaluationException& e) {
-      LOG(message_group::Error, e.what());
+      e.LOG(message_group::Error, e.what());
       throw;
     }
     return stream.str();
@@ -460,7 +461,7 @@ public:
     try {
       (tostream_visitor(stream))(v);
     } catch (EvaluationException& e) {
-      LOG(message_group::Error, e.what());
+      e.LOG(message_group::Error, e.what());
       throw;
     }
     return stream.str();

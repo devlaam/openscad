@@ -3,6 +3,11 @@
 #include <cstdlib>
 #include "platform/PlatformUtils.h"
 
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 26486)  // Disable warning for dangling pointers
+#endif                            // defined(_MSC_VER)
+
 class StackCheck
 {
 public:
@@ -29,3 +34,6 @@ private:
   unsigned long limit;
   unsigned char *ptr;
 };
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif  // defined(_MSC_VER)

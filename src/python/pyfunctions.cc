@@ -1154,6 +1154,7 @@ PyObject *rotate_extrude_core(PyObject *obj, int convexity, double scale, double
   if (!isnan(fs)) node->fs = fs;
 
   node->convexity = convexity;
+  node->angle = angle;
 
   double dummy;
   Vector3d v(0, 0, 0);
@@ -1373,8 +1374,6 @@ PyObject *python_csg_sub(PyObject *self, PyObject *args, PyObject *kwargs, OpenS
     PyObject *key, *value;
     Py_ssize_t pos = 0;
     while (PyDict_Next(dict, &pos, &key, &value)) {
-      PyObject *value1 = PyUnicode_AsEncodedString(key, "utf-8", "~");
-      const char *value_str = PyBytes_AS_STRING(value1);
       PyDict_SetItem(((PyOpenSCADObject *)pyresult)->dict, key, value);
     }
   }
@@ -1540,6 +1539,11 @@ PyObject *python_nb_sub_vec3(PyObject *arg1, PyObject *arg2,
         }
       }
       return pyresult;
+    } else {
+      auto node = std::make_shared<CsgOpNode>(instance, OpenSCADOperator::UNION);
+      DECLARE_INSTANCE
+      for (auto x : nodes) node->children.push_back(x->clone());
+      return PyOpenSCADObjectFromNode(&PyOpenSCADType, node);
     }
   }
   PyErr_SetString(PyExc_TypeError, "invalid argument right to operator");

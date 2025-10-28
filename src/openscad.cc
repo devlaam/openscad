@@ -601,7 +601,7 @@ int cmdline(const CommandLine& cmd)
 
   if (python_active) {
     auto fulltext_py = text;
-    initPython(PlatformUtils::applicationPath(), 0.0);
+    initPython("", 0.0);
     auto error = evaluatePython(fulltext_py, false);
     if (error.size() > 0) LOG(error.c_str());
     text = "\n";
@@ -824,7 +824,8 @@ int main(int argc, char **argv)
   // The original name as called, not resolving links and so on. This will
   // just forward everything to the python main.
   const auto applicationName = fs::path(argv[0]).filename().generic_string();
-  if (applicationName == "openscad-python") {
+  if (applicationName == "python" || applicationName == "python3" ||
+      applicationName.rfind("python3.", 0) == 0 || applicationName == "openscad-python") {
     return pythonRunArgs(argc, argv);
   }
 #endif
@@ -1009,7 +1010,13 @@ int main(int argc, char **argv)
   if (vm.count("version")) version();
   if (vm.count("info")) arg_info = true;
   if (vm.count("backend")) {
-    RenderSettings::inst()->backend3D = renderBackend3DFromString(vm["backend"].as<std::string>());
+    auto backend_string = vm["backend"].as<std::string>();
+    auto backend = renderBackend3DFromString(backend_string);
+    if (!backend) {
+      LOG(message_group::Error, "Unknown rendering backend '%1$s'.", backend_string.c_str());
+      return 1;
+    }
+    RenderSettings::inst()->backend3D = backend.value();
   }
 
   if (vm.count("preview")) {
