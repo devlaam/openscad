@@ -1359,6 +1359,8 @@ PyObject *python_csg_sub(PyObject *self, PyObject *args, PyObject *kwargs, OpenS
       case OpenSCADOperator::HULL:      break;
       case OpenSCADOperator::FILL:      break;
       case OpenSCADOperator::RESIZE:    break;
+      //RUUD
+      case OpenSCADOperator::BOX:       break;
       }
       return NULL;
     }
@@ -1433,6 +1435,8 @@ PyObject *python_oo_csg_sub(PyObject *self, PyObject *args, PyObject *kwargs, Op
       case OpenSCADOperator::HULL:      break;
       case OpenSCADOperator::FILL:      break;
       case OpenSCADOperator::RESIZE:    break;
+      //RUUD
+      case OpenSCADOperator::BOX:       break;
       }
       return NULL;
     }
@@ -1590,6 +1594,11 @@ PyObject *python_csg_adv_sub(PyObject *self, PyObject *args, PyObject *kwargs, C
         PyErr_SetString(PyExc_TypeError,
                         "Error during parsing hull. arguments must be solids or arrays.");
         break;
+      //RUUD
+      case CgalAdvType::BOX:
+        PyErr_SetString(PyExc_TypeError,
+                        "Error during parsing box. arguments must be solids or arrays.");
+        break;
       case CgalAdvType::FILL:
         PyErr_SetString(PyExc_TypeError,
                         "Error during parsing fill. arguments must be solids or arrays.");
@@ -1639,6 +1648,12 @@ PyObject *python_minkowski(PyObject *self, PyObject *args, PyObject *kwargs)
 }
 
 PyObject *python_hull(PyObject *self, PyObject *args, PyObject *kwargs)
+{
+  return python_csg_adv_sub(self, args, kwargs, CgalAdvType::HULL);
+}
+
+//RUUD
+PyObject *python_box(PyObject *self, PyObject *args, PyObject *kwargs)
 {
   return python_csg_adv_sub(self, args, kwargs, CgalAdvType::HULL);
 }
@@ -2222,6 +2237,8 @@ PyMethodDef PyOpenSCADFunctions[] = {
   {"intersection", (PyCFunction)python_intersection, METH_VARARGS | METH_KEYWORDS,
    "Intersection Object."},
   {"hull", (PyCFunction)python_hull, METH_VARARGS | METH_KEYWORDS, "Hull Object."},
+  //RUUD
+  {"box", (PyCFunction)python_box, METH_VARARGS | METH_KEYWORDS, "Box Object."},
   {"minkowski", (PyCFunction)python_minkowski, METH_VARARGS | METH_KEYWORDS, "Minkowski Object."},
   {"fill", (PyCFunction)python_fill, METH_VARARGS | METH_KEYWORDS, "Fill Object."},
   {"resize", (PyCFunction)python_resize, METH_VARARGS | METH_KEYWORDS, "Resize Object."},

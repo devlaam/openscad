@@ -98,6 +98,27 @@ static std::shared_ptr<AbstractNode> builtin_resize(const ModuleInstantiation *i
   return children.instantiate(node);
 }
 
+//RUUD(extract parameters)
+static std::shared_ptr<AbstractNode> builtin_box(const ModuleInstantiation *inst, Arguments arguments, const Children& children)
+{
+  auto node = std::make_shared<CgalAdvNode>(inst, CgalAdvType::BOX);
+
+  Parameters parameters = Parameters::parse(std::move(arguments), inst->location(), {"add", "act"});
+  const auto& add = parameters["add"];
+  node->add << 0, 0, 0;
+  if (add.type() == Value::Type::NUMBER) { node->add << add.toDouble(), add.toDouble(), add.toDouble(); }
+  else if (add.type() == Value::Type::VECTOR) {
+    const auto& vs = add.toVector();
+    if (vs.size() >= 1) node->add[0] = vs[0].toDouble();
+    if (vs.size() >= 2) node->add[1] = vs[1].toDouble();
+    if (vs.size() >= 3) node->add[2] = vs[2].toDouble();
+  }
+  const auto& act = parameters["act"];
+  node->act << false;
+  if (act.type() == Value::Type::BOOL) { node->act << act.toBool(); }
+  return children.instantiate(node);
+}
+
 std::string CgalAdvNode::name() const
 {
   switch (this->type) {
@@ -105,6 +126,7 @@ std::string CgalAdvNode::name() const
   case CgalAdvType::HULL:      return "hull"; break;
   case CgalAdvType::FILL:      return "fill"; break;
   case CgalAdvType::RESIZE:    return "resize"; break;
+  case CgalAdvType::BOX:       return "box"; break;
   default:                     assert(false);
   }
   return "internal_error";
@@ -123,6 +145,10 @@ std::string CgalAdvNode::toString() const
     stream << "(newsize = [" << this->newsize[0] << "," << this->newsize[1] << "," << this->newsize[2]
            << "]" << ", auto = [" << this->autosize[0] << "," << this->autosize[1] << ","
            << this->autosize[2] << "]" << ", convexity = " << this->convexity << ")";
+    break;
+  case CgalAdvType::BOX:
+    stream << "(add = [" << this->add[0] << "," << this->add[1] << "," << this->add[2]
+           << "]" << ", act = " << this->act << ")";
     break;
   default: assert(false);
   }
@@ -153,5 +179,12 @@ void register_builtin_cgaladv()
                    "resize([x, y, z], boolean)",
                    "resize([x, y, z], [boolean, boolean, boolean])",
                    "resize([x, y, z], [boolean, boolean, boolean], convexity = number)",
+                 });
+  Builtins::init("box", new BuiltinModule(builtin_box),
+                 { // moeten hier ook nog de vormen met de naam bij?
+                   "add([x, y, z])",
+                   "add([x, y, z],boolean)",
+                   "add(number)",
+                   "add(number,boolean)",
                  });
 }

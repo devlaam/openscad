@@ -112,6 +112,10 @@ private:
   std::unique_ptr<Polygon2d> applyHull2D(const AbstractNode& node);
   std::unique_ptr<Polygon2d> applyFill2D(const AbstractNode& node);
   std::unique_ptr<Geometry> applyHull3D(const AbstractNode& node);
+  //RUUD
+  std::unique_ptr<Polygon2d> applyBox2D(const AbstractNode& node);
+  std::unique_ptr<Geometry> applyBox3D(const AbstractNode& node);
+
   void applyResize3D(CGALNefGeometry& N, const Vector3d& newsize,
                      const Eigen::Matrix<bool, 3, 1>& autosize);
   std::unique_ptr<Polygon2d> applyToChildren2D(const AbstractNode& node, OpenSCADOperator op);

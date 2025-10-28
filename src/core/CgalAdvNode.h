@@ -6,7 +6,8 @@
 #include "core/ModuleInstantiation.h"
 #include "geometry/linalg.h"
 
-enum class CgalAdvType { MINKOWSKI, HULL, FILL, RESIZE };
+//RUUD
+enum class CgalAdvType { MINKOWSKI, HULL, FILL, RESIZE, BOX };
 
 class CgalAdvNode : public AbstractNode
 {
@@ -20,4 +21,8 @@ public:
   Vector3d newsize;
   Eigen::Matrix<bool, 3, 1> autosize;
   CgalAdvType type;
+  //RUUD
+  Vector3d add;
+  bool act;
+
 };

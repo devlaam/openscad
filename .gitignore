@@ -80,6 +80,8 @@ CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
 OpenSCAD_autogen
+openscad.sublime-project
+openscad.sublime-workspace
 resources/CMakeFiles
 resources/Makefile
 resources/cmake_install.cmake

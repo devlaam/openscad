@@ -119,7 +119,9 @@ void CSGTreeEvaluator::applyToChildren(State& state, const AbstractNode& node, O
       case OpenSCADOperator::MINKOWSKI:
       case OpenSCADOperator::HULL:
       case OpenSCADOperator::FILL:
-      case OpenSCADOperator::RESIZE:    break;
+      case OpenSCADOperator::RESIZE:
+      //RUUD
+      case OpenSCADOperator::BOX:       break;
       }
       t1 = t;
     }

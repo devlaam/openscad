@@ -13,6 +13,7 @@
 
 #if !ENABLE_LEXERTL
 
+//RUUD (added 2x: box)
 ScadLexer::ScadLexer(QObject *parent) : QsciLexerCPP(parent)
 {
   // -> Style: Keyword (lexer.l)
@@ -36,7 +37,7 @@ ScadLexer::ScadLexer(QObject *parent) : QsciLexerCPP(parent)
   // -> Style: GlobalClass
   keywordSet[3] =
     "cube sphere cylinder polyhedron square circle polygon text "
-    "minkowski hull resize child children echo union difference "
+    "minkowski hull box resize child children echo union difference "
     "intersection linear_extrude rotate_extrude import group "
     "projection render surface scale rotate mirror translate "
     "multmatrix color offset intersection_for roof fill";
@@ -123,7 +124,7 @@ void Lex::default_rules()
   std::string transformations(
     "translate rotate scale linear_extrude "
     "rotate_extrude resize mirror multmatrix color "
-    "offset hull minkowski children");
+    "offset hull box minkowski children");
   defineRules(transformations, etransformation);
 
   std::string booleans("union difference intersection intersection_for");

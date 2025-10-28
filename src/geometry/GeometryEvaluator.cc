@@ -140,6 +140,9 @@ GeometryEvaluator::ResultObject GeometryEvaluator::applyToChildren3D(const Abstr
 
   if (op == OpenSCADOperator::HULL) {
     return ResultObject::mutableResult(std::shared_ptr<Geometry>(applyHull(children)));
+  //RUUD
+  } else if ((op == OpenSCADOperator::BOX) && node->act) {
+    return ResultObject::mutableResult(std::shared_ptr<Geometry>(applyBox(children,node->add)));
   } else if (op == OpenSCADOperator::FILL) {
     for (const auto& item : children) {
       LOG(message_group::Warning, item.first->modinst->location(), this->tree.getDocumentPath(),
@@ -161,6 +164,9 @@ GeometryEvaluator::ResultObject GeometryEvaluator::applyToChildren3D(const Abstr
     return ResultObject::constResult(applyMinkowski(actualchildren));
     break;
   }
+  //RUUD
+  // if we have a box here, the act must be false, so return the union.
+  case OpenSCADOperator::BOX:
   case OpenSCADOperator::UNION: {
     Geometry::Geometries actualchildren;
     for (const auto& item : children) {
@@ -242,6 +248,64 @@ std::unique_ptr<Polygon2d> GeometryEvaluator::applyHull2D(const AbstractNode& no
   return geometry;
 }
 
+//RUUD(box-2D)
+std::unique_ptr<Polygon2d> GeometryEvaluator::applyBox2D(const AbstractNode& node)
+{
+  auto children = collectChildren2D(node);
+  auto geometry = std::make_unique<Polygon2d>();
+
+  const double eps = 1e-9;
+
+  bool resizefault = false;
+  bool hasPoint = false;
+  double minx = 0.0, miny = 0.0;
+  double maxx = 0.0, maxy = 0.0;
+  double dx = node->add[0]
+  double dy = node->add[1]
+
+  // Scan all child outlines to find AABB
+  for (const auto& poly : children) {
+    if (!poly) continue;
+    for (const auto& o : poly->outlines()) {
+      for (const auto& v : o.vertices) {
+        const double x = v[0];
+        const double y = v[1];
+        if (!hasPoint) {
+          minx = maxx = x;
+          miny = maxy = y;
+          hasPoint = true;
+        } else {
+          if (x < minx) minx = x; if (x > maxx) maxx = x;
+          if (y < miny) miny = y; if (y > maxy) maxy = y;
+        }
+      }
+    }
+  }
+
+  // Nothing to box -> return empty geometry
+  if (!hasPoint) return geometry;
+
+  // See if we can expand/contract the bounding box. If not, ignore.
+  if ( (maxx - minx + 2*dx) > eps ) { minx -= dx; maxx += dx; } else { resizefault = true; };
+  if ( (maxy - miny + 2*dy) > eps ) { miny -= dy; maxy += dy; } else { resizefault = true; };
+
+  if (resizefault) { LOG("WARNING: Bounding box has one or more negative dimensions, ignoring offending size modifications."); }
+
+  Outline2d outline;
+  outline.vertices.emplace_back(minx, miny); // bottom-left
+  outline.vertices.emplace_back(maxx, miny); // bottom-right
+  outline.vertices.emplace_back(maxx, maxy); // top-right
+  outline.vertices.emplace_back(minx, maxy); // top-left
+
+  geometry->addOutline(outline);
+  geometry->setSanitized(true);
+
+  return geometry;
+}
+
+
+//END_RUUD
+
 std::unique_ptr<Polygon2d> GeometryEvaluator::applyFill2D(const AbstractNode& node)
 {
   // Merge and sanitize input geometry
@@ -267,6 +331,14 @@ std::unique_ptr<Geometry> GeometryEvaluator::applyHull3D(const AbstractNode& nod
   auto P = PolySet::createEmpty();
   return applyHull(children);
 }
+
+//RUUD
+std::unique_ptr<Geometry> GeometryEvaluator::applyBox3D(const AbstractNode& node)
+{
+  auto children = collectChildren3D(node);
+  return applyBox(std::move(children),node->add);
+}
+
 
 std::unique_ptr<Polygon2d> GeometryEvaluator::applyMinkowski2D(const AbstractNode& node)
 {
@@ -405,6 +477,9 @@ std::unique_ptr<Polygon2d> GeometryEvaluator::applyToChildren2D(const AbstractNo
     return applyHull2D(node);
   } else if (op == OpenSCADOperator::FILL) {
     return applyFill2D(node);
+  //RUUD
+  } else if ((op == OpenSCADOperator::BOX) && node->act) {
+    return applyBox2D(node);
   }
 
   auto children = collectChildren2D(node);
@@ -423,6 +498,9 @@ std::unique_ptr<Polygon2d> GeometryEvaluator::applyToChildren2D(const AbstractNo
 
   Clipper2Lib::ClipType clipType;
   switch (op) {
+  //RUUD
+  // if we have a box here, the act must be false, so return the union.
+  case OpenSCADOperator::BOX:          clipType = Clipper2Lib::ClipType::Union; break;
   case OpenSCADOperator::UNION:        clipType = Clipper2Lib::ClipType::Union; break;
   case OpenSCADOperator::INTERSECTION: clipType = Clipper2Lib::ClipType::Intersection; break;
   case OpenSCADOperator::DIFFERENCE:   clipType = Clipper2Lib::ClipType::Difference; break;
@@ -955,6 +1033,15 @@ Response GeometryEvaluator::visit(State& state, const CgalAdvNode& node)
           editablegeom->setConvexity(node.convexity);
           editablegeom->resize(node.newsize, node.autosize);
         }
+        break;
+      }
+      //RUUD
+      case CgalAdvType::BOX: {
+        if (node->act) {
+          geom = applyToChildren(node, OpenSCADOperator::BOX).constptr();
+          } else {
+          geom = applyToChildren(node, OpenSCADOperator::UNION).constptr();;
+          }
         break;
       }
       default: assert(false && "not implemented");
